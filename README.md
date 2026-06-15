@@ -372,7 +372,9 @@ RS256 is the algorithm that underlies every identity token AegisLab issues. Unde
 
 Signing a JWT with RS256 involves three steps. First, the header and payload are base64url-encoded and concatenated with a `.` separator to form the signing input. Second, SHA-256 is applied to produce a 32-byte digest. Third, the RSA PKCS#1 v1.5 signature operation is applied using the private key to produce a signature, which is base64url-encoded and appended as the third JWT segment.
 
-$$\text{token} = \text{b64url}(header) \| \text{``."} \| \text{b64url}(payload) \| \text{``."} \| \text{b64url}\!\left(\text{RSA-sign}_{sk}\!\left(\text{SHA-256}(\text{b64url}(h) \| \text{``."} \| \text{b64url}(p))\right)\right)$$
+$$
+\text{token} = \text{b64url}(header) \| \text{``."}  \| \text{b64url}(payload) \| \text{``."}  \| \text{b64url}\!\left(\text{RSA-sign}_{sk}\!\left(\text{SHA-256}(\text{b64url}(h) \| \text{``."}  \| \text{b64url}(p))\right)\right)
+$$
 
 Verification reverses this: the verifier hashes the header+payload, then uses the **public key** to decrypt the signature and compares the result. Because RSA signature verification requires only the public key, it can be distributed freely without granting forgery capability.
 
@@ -450,7 +452,9 @@ The circuit breaker pattern prevents an agent that is repeatedly failing (or bei
 
 **The violation budget formula:**
 
-$$\text{circuit state} = \begin{cases} \text{OPEN} & v \geq V_{\max} \text{ and } (t - t_{\text{opened}}) < T_{\text{open}} \\ \text{HALF\_OPEN} & v \geq V_{\max} \text{ and } (t - t_{\text{opened}}) \geq T_{\text{open}} \\ \text{CLOSED} & v < V_{\max} \end{cases}$$
+$$
+\text{circuit state} = \begin{cases} \text{OPEN} & v \geq V_{\max} \text{ and } (t - t_{\text{opened}}) < T_{\text{open}} \\ \text{HALF\_OPEN} & v \geq V_{\max} \text{ and } (t - t_{\text{opened}}) \geq T_{\text{open}} \\ \text{CLOSED} & v < V_{\max} \end{cases}
+$$
 
 where $v$ is the current violation count, $V_{\max}$ is `MAX_VIOLATIONS` (default: 5), and $T_{\text{open}}$ is `CIRCUIT_OPEN_SECONDS` (default: 30).
 
@@ -495,7 +499,9 @@ where:
 
 $$S_{\text{final}} = \min(S_{\text{pattern}} + S_{\text{heuristic}},\ 1.0)$$
 
-$$\text{decision} = \begin{cases} \text{BLOCKED} & S_{\text{final}} \geq \theta_{\text{block}} \\ \text{FLAGGED} & \theta_{\text{review}} \leq S_{\text{final}} < \theta_{\text{block}} \\ \text{PASS} & S_{\text{final}} < \theta_{\text{review}} \end{cases}$$
+$$
+\text{decision} = \begin{cases} \text{BLOCKED} & S_{\text{final}} \geq \theta_{\text{block}} \\ \text{FLAGGED} & \theta_{\text{review}} \leq S_{\text{final}} < \theta_{\text{block}} \\ \text{PASS} & S_{\text{final}} < \theta_{\text{review}} \end{cases}
+$$
 
 Default thresholds: $\theta_{\text{block}} = 0.7$, $\theta_{\text{review}} = 0.4$.
 
@@ -524,7 +530,9 @@ $$R_{\text{total}}(t) = \sum_{i=1}^{t} r_i$$
 
 where $r_i$ is the risk score of the $i$-th tool call. The quarantine condition is:
 
-$$\text{quarantine} = R_{\text{total}} > B_{\text{agent}}$$
+$$
+\text{quarantine} = R_{\text{total}} > B_{\text{agent}}
+$$
 
 where $B_{\text{agent}}$ is the agent's `risk_budget` (default: 1.0, scale: 0.0 to 10.0).
 
@@ -532,7 +540,9 @@ where $B_{\text{agent}}$ is the agent's `risk_budget` (default: 1.0, scale: 0.0 
 
 The policy engine assigns a base risk score to each tool call outcome. Calls that are denied or escalated get higher scores than allowed calls, because they represent suspicious or out-of-policy behavior:
 
-$$r_i = \begin{cases} r_{\text{base}} & \text{verdict} = \text{ALLOW} \\ r_{\text{base}} \cdot 2.0 & \text{verdict} = \text{ESCALATE} \\ r_{\text{base}} \cdot 3.0 & \text{verdict} = \text{DENY} \end{cases}$$
+$$
+r_i = \begin{cases} r_{\text{base}} & \text{verdict} = \text{ALLOW} \\ r_{\text{base}} \cdot 2.0 & \text{verdict} = \text{ESCALATE} \\ r_{\text{base}} \cdot 3.0 & \text{verdict} = \text{DENY} \end{cases}
+$$
 
 The `risk_score` is stored on the `ToolCall` record in the task trace, making the budget consumption fully auditable.
 
@@ -558,7 +568,9 @@ The policy engine evaluates every tool call through a strict ordered pipeline. T
 
 **The evaluation pipeline as a composed predicate chain:**
 
-$$\text{verdict} = \begin{cases} \text{DENY} & \text{tool} \notin \text{token.allowed\_tools} \\ \text{DENY} & \nexists\ \text{policy for tool} \\ \text{DENY} & \exists\ \text{deny rule } d : \text{matches}(d, \text{args}) \\ \text{ESCALATE} & \exists\ \text{approval rule } a : \text{matches}(a, \text{args}) \\ \text{ALLOW} & \exists\ \text{allow rule } l : \text{matches}(l, \text{args}) \\ \text{DENY} & \text{(default fall-through)} \end{cases}$$
+$$
+\text{verdict} = \begin{cases} \text{DENY} & \text{tool} \notin \text{token.allowed\_tools} \\ \text{DENY} & \nexists\ \text{policy for tool} \\ \text{DENY} & \exists\ \text{deny rule } d : \text{matches}(d, \text{args}) \\ \text{ESCALATE} & \exists\ \text{approval rule } a : \text{matches}(a, \text{args}) \\ \text{ALLOW} & \exists\ \text{allow rule } l : \text{matches}(l, \text{args}) \\ \text{DENY} & \text{(default fall-through)} \end{cases}
+$$
 
 **The condition matching algorithm (`_matches_conditions`):**
 
