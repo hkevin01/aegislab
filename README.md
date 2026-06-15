@@ -31,18 +31,18 @@ The platform enforces **deterministic boundaries** through ephemeral containers,
 
 ## Security Controls at a Glance
 
-| # | Control | Module | What It Stops |
-|---|---------|--------|---------------|
-| 1 | **Cryptographic Agent Identity** | `core/identity.py` | Impersonation, token replay, privilege escalation |
-| 2 | **Deny-First Policy Engine** | `policy/engine.py` | Unauthorized tool calls, out-of-scope resource access |
-| 3 | **Prompt Injection Detection** | `defenses/injection.py` | Jailbreaks, indirect injection via tool outputs |
-| 4 | **LLM Guardrails** | `defenses/guardrails.py` | PII leakage, harmful content in model responses |
-| 5 | **Backpressure / Circuit Breaker** | `defenses/backpressure.py` | Runaway agents, rate-limit exhaustion, cascading failures |
-| 6 | **Egress Proxy** | `proxy/egress.py` | Exfiltration to unapproved network destinations |
-| 7 | **Ephemeral Sandbox** | `core/sandbox.py` | Persistent filesystem access, container escape |
-| 8 | **Immutable Audit Trace** | `logging/tracer.py` | Undetected policy violations, forensic gaps |
-| 9 | **Threat Detector (ATA)** | `defenses/threat_detector.py` | Coordinated multi-agent attacks, anomalous behavior patterns |
-| 10 | **Agent Quarantine** | `core/orchestrator.py` | Repeated-offender agents continuing to operate |
+| # | Control | Module | What It Stops | Technique |
+|---|---------|--------|---------------|-----------|
+| 1 | **Cryptographic Agent Identity** | `core/identity.py` | Impersonation, token replay, privilege escalation | Short-lived RS256 JWT per task; token carries explicit `allowed_tools` scope and 15 min TTL. Asymmetric signing means only the identity service can mint tokens - any other service can verify but not forge. |
+| 2 | **Deny-First Policy Engine** | `policy/engine.py` | Unauthorized tool calls, out-of-scope resource access | Ordered predicate chain: token scope check → policy existence check → deny rules → escalate rules → allow rules → default deny. No matching rule = denied. Rules are YAML-loaded at startup and immutable at runtime. |
+| 3 | **Prompt Injection Detection** | `defenses/injection.py` | Jailbreaks, indirect injection via tool outputs | Regex pattern library covering role-override phrases, delimiter attacks, and indirect injection in tool responses. Scored 0-1; configurable block/flag thresholds. Applied to both input prompts and tool output before it is fed back to the model. |
+| 4 | **LLM Guardrails** | `defenses/guardrails.py` | PII leakage, harmful content in model responses | Pattern-based PII detector (email, phone, SSN, credit card regexes) plus keyword blocklist for harmful content categories. Applied post-generation before the response is returned to the caller. |
+| 5 | **Backpressure / Circuit Breaker** | `defenses/backpressure.py` | Runaway agents, rate-limit exhaustion, cascading failures | Sliding-window rate limiter (token-bucket per agent per minute) combined with a 3-state circuit breaker (CLOSED / OPEN / HALF_OPEN). Circuit opens on `MAX_VIOLATIONS` failures; HALF_OPEN probes recovery with a single canary request. |
+| 6 | **Egress Proxy** | `proxy/egress.py` | Exfiltration to unapproved network destinations | Allowlist of approved hostnames and URL prefixes loaded from policy. Every outbound HTTP request from a tool is routed through the proxy; requests to non-allowlisted destinations are rejected before the TCP connection is made. |
+| 7 | **Ephemeral Sandbox** | `core/sandbox.py` | Persistent filesystem access, container escape | Each agent task runs in an isolated container with a read-only root filesystem, no network by default, and a tmpfs scratch directory that is deleted on task completion. Resource limits (CPU, memory, wall-clock time) are enforced by the container runtime. |
+| 8 | **Immutable Audit Trace** | `logging/tracer.py` | Undetected policy violations, forensic gaps | Structured JSON log entry emitted for every decision point: identity mint, policy verdict, injection score, guardrail result, tool execution, egress attempt. Entries are append-only and include a task UUID, agent ID, timestamp, and outcome. |
+| 9 | **Threat Detector (ATA)** | `defenses/threat_detector.py` | Coordinated multi-agent attacks, anomalous behavior patterns | Implements Sysdig ATA-inspired heuristics: tracks per-agent call frequency, cross-agent coordination signals, and known adversarial tool-call sequences. Produces a threat score fed into the policy engine as an additional deny condition. |
+| 10 | **Agent Quarantine** | `core/orchestrator.py` | Repeated-offender agents continuing to operate | Lifetime violation counter per agent. When total weighted violations exceed `QUARANTINE_THRESHOLD` (default: 20), the agent state transitions to `QUARANTINED` - a terminal state that blocks all future task submissions until an operator manually releases it via the API. |
 
 ## Full Request Lifecycle
 
