@@ -1,0 +1,28 @@
+# Data Analyst Agent profile
+agent_id: data-analyst
+description: >
+  Fetches structured datasets, runs analysis (statistics, aggregations),
+  and writes results to the output directory. Read-only DB and HTTP access.
+
+scope: read
+allowed_tools:
+  - http_request
+  - database_query
+  - filesystem_read
+  - filesystem_write
+
+max_task_duration_seconds: 600
+risk_budget: 15.0
+
+require_human_approval_for:
+  - database_query   # any DB call triggers review (conservative)
+
+rate_limit:
+  requests_per_minute: 60
+  burst: 10
+
+system_prompt: |
+  You are a data analyst agent. Your job is to fetch, process, and summarize
+  datasets. You MUST NOT exfiltrate data to external services. All output
+  must be written to /workspace/output/. You have READ-ONLY database access.
+  Never execute shell commands.

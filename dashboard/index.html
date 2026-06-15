@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AegisLab — Security Dashboard</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --orange: #e3843a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header h1 { font-size: 18px; font-weight: 600; color: var(--accent); }
+    header p  { color: var(--muted); font-size: 12px; }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      flex-shrink: 0;
+    }
+    .status-dot.offline { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+    /* ── Layout ── */
+    .main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; }
+    @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--accent);
+    }
+    .panel-header .badge {
+      background: var(--border);
+      color: var(--muted);
+      border-radius: 12px;
+      padding: 1px 8px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .panel-body { padding: 12px 16px; max-height: 340px; overflow-y: auto; }
+
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { color: var(--muted); text-align: left; padding: 4px 8px; font-weight: 500; border-bottom: 1px solid var(--border); }
+    td { padding: 6px 8px; border-bottom: 1px solid #21262d; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(88,166,255,0.04); }
+
+    /* ── Status pills ── */
+    .pill {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill-green  { background: rgba(63,185,80,.15);  color: var(--green); }
+    .pill-yellow { background: rgba(210,153,34,.15); color: var(--yellow); }
+    .pill-red    { background: rgba(248,81,73,.15);  color: var(--red); }
+    .pill-blue   { background: rgba(88,166,255,.15); color: var(--accent); }
+    .pill-orange { background: rgba(227,132,58,.15); color: var(--orange); }
+
+    /* ── Trace stream ── */
+    .trace-stream {
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 11px;
+      max-height: 420px;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .trace-entry {
+      padding: 4px 6px;
+      border-radius: 4px;
+      margin-bottom: 3px;
+      border-left: 3px solid var(--border);
+      line-height: 1.5;
+      word-break: break-all;
+    }
+    .trace-entry.allow  { border-left-color: var(--green); }
+    .trace-entry.deny   { border-left-color: var(--red);   background: rgba(248,81,73,.06); }
+    .trace-entry.escalate { border-left-color: var(--yellow); }
+    .trace-entry.injection { border-left-color: var(--orange); background: rgba(227,132,58,.08); }
+    .trace-entry.egress { border-left-color: var(--accent); }
+    .trace-ts { color: var(--muted); margin-right: 6px; }
+    .trace-type { font-weight: 700; margin-right: 6px; }
+
+    /* ── Dependency graph placeholder ── */
+    #dep-graph {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 12px;
+      height: 200px;
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+      margin-top: 8px;
+    }
+
+    /* ── Buttons ── */
+    button {
+      background: var(--border);
+      border: none;
+      color: var(--text);
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background .15s;
+    }
+    button:hover { background: #3d444d; }
+    button.danger { background: rgba(248,81,73,.2); color: var(--red); }
+    button.danger:hover { background: rgba(248,81,73,.35); }
+
+    /* ── Full-width panels ── */
+    .full { grid-column: 1 / -1; }
+
+    /* ── Stats row ── */
+    .stats {
+      display: flex;
+      gap: 12px;
+      padding: 12px 16px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      flex: 1;
+      min-width: 100px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    .stat .value { font-size: 28px; font-weight: 700; color: var(--accent); }
+    .stat .label { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="status-dot" id="connection-dot"></div>
+  <div>
+    <h1>⚔ AegisLab Security Dashboard</h1>
+    <p id="connection-status">Connecting to event stream…</p>
+  </div>
+  <div style="margin-left:auto; display:flex; gap:8px;">
+    <button onclick="reloadPolicies()">↺ Reload Policies</button>
+    <button onclick="clearTraces()">✕ Clear Traces</button>
+  </div>
+</header>
+
+<!-- Stats row -->
+<div class="stats" id="stats-row">
+  <div class="stat"><div class="value" id="stat-active">–</div><div class="label">Active Tasks</div></div>
+  <div class="stat"><div class="value" id="stat-total">–</div><div class="label">Total Tasks</div></div>
+  <div class="stat"><div class="value" id="stat-denied">–</div><div class="label">Denied Calls</div></div>
+  <div class="stat"><div class="value" id="stat-injections">–</div><div class="label">Injection Flags</div></div>
+  <div class="stat"><div class="value" id="stat-egress-blocked">–</div><div class="label">Egress Blocked</div></div>
+</div>
+
+<div class="main">
+
+  <!-- Active Tasks -->
+  <div class="panel">
+    <div class="panel-header">
+      Active Tasks
+      <span class="badge" id="task-count">0</span>
+    </div>
+    <div class="panel-body">
+      <table>
+        <thead><tr><th>Task ID</th><th>Agent</th><th>Status</th><th>Risk</th></tr></thead>
+        <tbody id="task-table-body">
+          <tr><td colspan="4" style="color:var(--muted); text-align:center">No tasks yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Backpressure / Circuit Breakers -->
+  <div class="panel">
+    <div class="panel-header">
+      Backpressure &amp; Circuit Breakers
+      <button onclick="refreshMetrics()" style="font-size:11px; padding:3px 8px;">Refresh</button>
+    </div>
+    <div class="panel-body">
+      <table>
+        <thead><tr><th>Agent</th><th>Req/min</th><th>Violations</th><th>Circuit</th><th>Quarantine</th></tr></thead>
+        <tbody id="bp-table-body">
+          <tr><td colspan="5" style="color:var(--muted); text-align:center">No agents yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Egress Traffic -->
+  <div class="panel">
+    <div class="panel-header">Egress Kill-Switch Monitor</div>
+    <div class="panel-body">
+      <table>
+        <thead><tr><th>Agent</th><th>Unique Hosts</th><th>Kill-Switch</th></tr></thead>
+        <tbody id="egress-table-body">
+          <tr><td colspan="3" style="color:var(--muted); text-align:center">No egress data</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Registered Agents -->
+  <div class="panel">
+    <div class="panel-header">Registered Agents</div>
+    <div class="panel-body">
+      <table>
+        <thead><tr><th>Agent ID</th><th>Scope</th><th>Tools</th><th>Risk Budget</th></tr></thead>
+        <tbody id="agents-table-body">
+          <tr><td colspan="4" style="color:var(--muted); text-align:center">No agents registered</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Decision Trace Stream (full width) -->
+  <div class="panel full">
+    <div class="panel-header">
+      Live Decision Trace Stream
+      <span class="badge" id="trace-count">0 events</span>
+    </div>
+    <div class="trace-stream" id="trace-stream">
+      <div style="color:var(--muted);">Waiting for events…</div>
+    </div>
+  </div>
+
+  <!-- Agent Dependency Graph placeholder -->
+  <div class="panel full">
+    <div class="panel-header">Agent-to-Agent Dependency Graph</div>
+    <div class="panel-body">
+      <div id="dep-graph">
+        Graph renders here when multi-agent workflows are active.<br>
+        (Connect a WebSocket-capable graph library like Cytoscape.js for production.)
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = '';  // same origin
+  let traceCount = 0;
+  let deniedCount = 0;
+  let injectionCount = 0;
+  let egressBlockedCount = 0;
+  let totalTasks = 0;
+  const tasks = {};
+
+  // ── SSE Trace Stream ──────────────────────────────────────────
+  function connectEventStream() {
+    const es = new EventSource(`${API}/stream/traces`);
+    const dot = document.getElementById('connection-dot');
+    const statusEl = document.getElementById('connection-status');
+
+    es.onopen = () => {
+      dot.classList.remove('offline');
+      statusEl.textContent = 'Connected — receiving live events';
+    };
+
+    es.onerror = () => {
+      dot.classList.add('offline');
+      statusEl.textContent = 'Disconnected — retrying…';
+    };
+
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        appendTrace(event);
+        handleEventStats(event);
+      } catch (_) {}
+    };
+  }
+
+  function appendTrace(event) {
+    const stream = document.getElementById('trace-stream');
+    const type = event.event_type || '';
+    const verdict = (event.policy_verdict || '').toLowerCase();
+    const cls = verdict === 'deny' ? 'deny'
+              : verdict === 'escalate' ? 'escalate'
+              : type === 'INJECTION_FLAG' ? 'injection'
+              : type === 'EGRESS_EVENT' ? 'egress'
+              : 'allow';
+
+    const ts = new Date(event.timestamp).toLocaleTimeString();
+    const div = document.createElement('div');
+    div.className = `trace-entry ${cls}`;
+    div.innerHTML = `<span class="trace-ts">${ts}</span>` +
+      `<span class="trace-type">[${type}]</span>` +
+      escapeHtml(event.message || JSON.stringify(event));
+
+    // Remove placeholder
+    if (stream.children.length === 1 && stream.children[0].style.color) {
+      stream.innerHTML = '';
+    }
+    stream.insertBefore(div, stream.firstChild);
+    if (stream.children.length > 200) {
+      stream.removeChild(stream.lastChild);
+    }
+
+    traceCount++;
+    document.getElementById('trace-count').textContent = `${traceCount} events`;
+  }
+
+  function handleEventStats(event) {
+    const type = event.event_type || '';
+    if (type === 'TASK_START') {
+      totalTasks++;
+      tasks[event.task_id] = { agent_id: event.agent_id, status: 'running', risk: 0 };
+      updateTaskTable();
+    }
+    if (type === 'TASK_END') {
+      if (tasks[event.task_id]) tasks[event.task_id].status = event.extra?.status || 'done';
+      updateTaskTable();
+    }
+    if (type === 'TOOL_CALL' && event.policy_verdict === 'deny') deniedCount++;
+    if (type === 'INJECTION_FLAG') injectionCount++;
+    if (type === 'EGRESS_EVENT' && event.egress_allowed === false) egressBlockedCount++;
+    if (type === 'TOOL_CALL' && event.risk_score && tasks[event.task_id]) {
+      tasks[event.task_id].risk = (tasks[event.task_id].risk || 0) + event.risk_score;
+    }
+    updateCounters();
+  }
+
+  function updateCounters() {
+    const active = Object.values(tasks).filter(t => t.status === 'running').length;
+    document.getElementById('stat-active').textContent = active;
+    document.getElementById('stat-total').textContent = totalTasks;
+    document.getElementById('stat-denied').textContent = deniedCount;
+    document.getElementById('stat-injections').textContent = injectionCount;
+    document.getElementById('stat-egress-blocked').textContent = egressBlockedCount;
+    document.getElementById('task-count').textContent = Object.keys(tasks).length;
+  }
+
+  function updateTaskTable() {
+    const tbody = document.getElementById('task-table-body');
+    const rows = Object.entries(tasks).slice(-20);
+    if (!rows.length) return;
+    tbody.innerHTML = rows.reverse().map(([id, t]) => {
+      const statusPill = statusToPill(t.status);
+      return `<tr>
+        <td style="font-family:monospace; font-size:11px">${id.slice(0,8)}…</td>
+        <td>${escapeHtml(t.agent_id)}</td>
+        <td>${statusPill}</td>
+        <td>${(t.risk || 0).toFixed(1)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function statusToPill(s) {
+    const map = { running: 'blue', completed: 'green', failed: 'red',
+                  pending: 'yellow', quarantined: 'red', awaiting_approval: 'orange' };
+    const cls = map[s] || 'blue';
+    return `<span class="pill pill-${cls}">${s}</span>`;
+  }
+
+  // ── Metrics polling ───────────────────────────────────────────
+  async function refreshMetrics() {
+    try {
+      const [bp, egress, agents] = await Promise.all([
+        fetch(`${API}/metrics/backpressure`).then(r => r.json()),
+        fetch(`${API}/metrics/egress`).then(r => r.json()),
+        fetch(`${API}/agents/`).then(r => r.json()),
+      ]);
+      renderBackpressure(bp);
+      renderEgress(egress);
+      renderAgents(agents);
+    } catch (err) {
+      console.warn('Metrics fetch failed:', err);
+    }
+  }
+
+  function renderBackpressure(data) {
+    const tbody = document.getElementById('bp-table-body');
+    if (!data.length) return;
+    tbody.innerHTML = data.map(row => {
+      const circuit = row.circuit_state;
+      const circuitPill = circuit === 'closed' ? `<span class="pill pill-green">closed</span>`
+                        : circuit === 'open'   ? `<span class="pill pill-red">open</span>`
+                        : `<span class="pill pill-yellow">half_open</span>`;
+      const qPill = row.quarantined
+        ? `<span class="pill pill-red">YES</span>
+           <button class="danger" style="margin-left:4px; font-size:10px"
+             onclick="releaseQuarantine('${row.agent_id}')">Release</button>`
+        : `<span class="pill pill-green">no</span>`;
+      return `<tr>
+        <td>${escapeHtml(row.agent_id)}</td>
+        <td>${row.requests_in_current_window}</td>
+        <td>${row.violation_count}</td>
+        <td>${circuitPill}</td>
+        <td>${qPill}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderEgress(data) {
+    const tbody = document.getElementById('egress-table-body');
+    if (!data.length) return;
+    tbody.innerHTML = data.map(row => {
+      const ks = row.blocked
+        ? `<span class="pill pill-red">ACTIVE</span>`
+        : `<span class="pill pill-green">off</span>`;
+      return `<tr>
+        <td>${escapeHtml(row.agent_id)}</td>
+        <td>${row.recent_hosts}</td>
+        <td>${ks}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderAgents(data) {
+    const tbody = document.getElementById('agents-table-body');
+    if (!data.length) return;
+    tbody.innerHTML = data.map(a => `<tr>
+      <td>${escapeHtml(a.agent_id)}</td>
+      <td><span class="pill pill-blue">${a.scope}</span></td>
+      <td style="font-size:11px">${(a.allowed_tools || []).join(', ') || '–'}</td>
+      <td>${a.risk_budget}</td>
+    </tr>`).join('');
+  }
+
+  // ── Admin actions ─────────────────────────────────────────────
+  async function reloadPolicies() {
+    try {
+      await fetch(`${API}/admin/reload-policies`, { method: 'POST' });
+      showToast('Policies reloaded');
+    } catch (err) { showToast('Error: ' + err, true); }
+  }
+
+  async function releaseQuarantine(agentId) {
+    try {
+      await fetch(`${API}/admin/quarantine/${agentId}/release`, { method: 'POST' });
+      showToast(`Agent '${agentId}' released`);
+      refreshMetrics();
+    } catch (err) { showToast('Error: ' + err, true); }
+  }
+
+  function clearTraces() {
+    document.getElementById('trace-stream').innerHTML =
+      '<div style="color:var(--muted);">Cleared.</div>';
+    traceCount = 0;
+    document.getElementById('trace-count').textContent = '0 events';
+  }
+
+  // ── Toast ─────────────────────────────────────────────────────
+  function showToast(msg, error = false) {
+    const t = document.createElement('div');
+    t.textContent = msg;
+    Object.assign(t.style, {
+      position:'fixed', bottom:'20px', right:'20px',
+      background: error ? 'rgba(248,81,73,.9)' : 'rgba(63,185,80,.9)',
+      color:'#fff', padding:'8px 16px', borderRadius:'8px',
+      fontSize:'13px', zIndex:'9999', transition:'opacity .4s',
+    });
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 2500);
+  }
+
+  // ── Utils ─────────────────────────────────────────────────────
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Init ──────────────────────────────────────────────────────
+  connectEventStream();
+  refreshMetrics();
+  setInterval(refreshMetrics, 10000);
+</script>
+</body>
+</html>

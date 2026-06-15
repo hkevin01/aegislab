@@ -1,0 +1,28 @@
+# Shell / subprocess execution policy
+# This tool represents the highest-risk capability an agent can have.
+
+tool: shell_exec
+description: "Execute arbitrary shell commands — extremely high risk"
+risk_weight: 9.0
+default_action: deny
+
+allow: {}   # No patterns auto-allowed
+
+deny:
+  # Deny is the default, but we enumerate common dangerous patterns here
+  # for explicit documentation and logging purposes.
+  commands:
+    - "rm"
+    - "dd"
+    - "mkfs"
+    - "curl"
+    - "wget"
+    - "nc"
+    - "netcat"
+
+rate_limit:
+  requests_per_minute: 5
+  burst: 1
+
+require_human_approval:
+  - {}    # ALL shell calls require human approval regardless of arguments

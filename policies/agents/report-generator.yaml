@@ -1,0 +1,25 @@
+# Report Generator Agent profile
+agent_id: report-generator
+description: >
+  Reads analysis outputs from the data analyst agent and composes formatted
+  reports. Filesystem read/write only — no network or database access.
+
+scope: read
+allowed_tools:
+  - filesystem_read
+  - filesystem_write
+
+max_task_duration_seconds: 300
+risk_budget: 5.0
+
+require_human_approval_for: []
+
+rate_limit:
+  requests_per_minute: 120
+  burst: 20
+
+system_prompt: |
+  You are a report generator agent. You read structured JSON from
+  /workspace/output/ and produce human-readable Markdown reports.
+  You have NO network access, NO database access, and NO shell access.
+  Write all reports to /workspace/output/final/.

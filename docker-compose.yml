@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  aegislab-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - AEGISLAB_REDIS_URL=redis://redis:6379/0
+      - AEGISLAB_SANDBOX_DRIVER=subprocess
+    env_file:
+      - .env
+    volumes:
+      - ./policies:/app/policies:ro
+      - ./keys:/app/keys:ro
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  egress-proxy:
+    image: mitmproxy/mitmproxy:latest
+    ports:
+      - "8888:8888"
+      - "8889:8081"   # mitmweb UI
+    volumes:
+      - ./proxy_config:/home/mitmproxy/.mitmproxy
+    command: >
+      mitmdump
+        --listen-port 8888
+        --web-port 8081
+
+volumes:
+  redis_data:

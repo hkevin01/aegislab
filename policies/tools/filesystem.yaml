@@ -1,0 +1,55 @@
+# Filesystem tool policy
+
+tool: filesystem_read
+description: "Read files from the workspace"
+risk_weight: 1.0
+default_action: allow
+
+allow:
+  path_prefix:
+    - "/workspace/data/"
+    - "/workspace/reports/"
+    - "/tmp/agent-"
+
+deny:
+  path_prefix:
+    - "/etc/"
+    - "/root/"
+    - "/home/"
+    - "/.ssh/"
+    - "/proc/"
+    - "/sys/"
+    - "/workspace/.env"
+    - "/workspace/keys/"
+
+rate_limit:
+  requests_per_minute: 200
+  burst: 50
+
+---
+
+tool: filesystem_write
+description: "Write files to the workspace output directory"
+risk_weight: 3.0
+default_action: deny
+
+allow:
+  path_prefix:
+    - "/workspace/output/"
+    - "/tmp/agent-"
+
+deny:
+  path_prefix:
+    - "/etc/"
+    - "/root/"
+    - "/home/"
+    - "/.ssh/"
+    - "/proc/"
+    - "/sys/"
+
+rate_limit:
+  requests_per_minute: 30
+  burst: 5
+
+require_human_approval:
+  - path_prefix: "/workspace/output/final"

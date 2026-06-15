@@ -1,0 +1,26 @@
+# Database tool policy
+
+tool: database_query
+description: "SQL queries against the application database"
+risk_weight: 3.5
+default_action: deny
+
+allow:
+  operations:
+    - SELECT
+
+deny:
+  operations:
+    - DROP
+    - TRUNCATE
+    - DELETE
+    - ALTER
+    - CREATE
+
+rate_limit:
+  requests_per_minute: 120
+  burst: 20
+
+require_human_approval:
+  - operation: INSERT
+  - operation: UPDATE

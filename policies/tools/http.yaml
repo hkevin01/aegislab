@@ -1,0 +1,32 @@
+# HTTP tool policy
+# All outbound HTTP requests from agents are evaluated against these rules.
+
+tool: http_request
+description: "Outbound HTTP calls made by agents"
+risk_weight: 2.0
+default_action: deny
+
+allow:
+  domains:
+    - "*.internal.corp"
+    - "api.approved-vendor.com"
+    - "data.gov"
+    - "api.nasa.gov"
+
+deny:
+  domains:
+    - "*.ngrok.io"
+    - "*.ngrok.app"
+    - "*.serveo.net"
+    - "requestbin.*"
+    - "webhook.site"
+
+rate_limit:
+  requests_per_minute: 30
+  burst: 5
+
+require_human_approval:
+  - method: POST
+  - method: PUT
+  - method: DELETE
+  - method: PATCH
