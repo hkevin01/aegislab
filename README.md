@@ -31,36 +31,61 @@ The platform enforces **deterministic boundaries** through ephemeral containers,
 
 ## Security Controls at a Glance
 
-| # | Control | Module | What It Stops | Technique |
-|---|---------|--------|---------------|-----------|
-| 1 | **Cryptographic Agent Identity** | `core/identity.py` | Impersonation, token replay, privilege escalation | Short-lived RS256 JWT per task; token carries explicit `allowed_tools` scope and 15 min TTL. Asymmetric signing means only the identity service can mint tokens - any other service can verify but not forge. |
-| 2 | **Deny-First Policy Engine** | `policy/engine.py` | Unauthorized tool calls, out-of-scope resource access | Ordered predicate chain: token scope check → policy existence check → deny rules → escalate rules → allow rules → default deny. No matching rule = denied. Rules are YAML-loaded at startup and immutable at runtime. |
-| 3 | **Prompt Injection Detection** | `defenses/injection.py` | Jailbreaks, indirect injection via tool outputs | Regex pattern library covering role-override phrases, delimiter attacks, and indirect injection in tool responses. Scored 0-1; configurable block/flag thresholds. Applied to both input prompts and tool output before it is fed back to the model. |
-| 4 | **LLM Guardrails** | `defenses/guardrails.py` | PII leakage, harmful content in model responses | Pattern-based PII detector (email, phone, SSN, credit card regexes) plus keyword blocklist for harmful content categories. Applied post-generation before the response is returned to the caller. |
-| 5 | **Backpressure / Circuit Breaker** | `defenses/backpressure.py` | Runaway agents, rate-limit exhaustion, cascading failures | Sliding-window rate limiter (token-bucket per agent per minute) combined with a 3-state circuit breaker (CLOSED / OPEN / HALF_OPEN). Circuit opens on `MAX_VIOLATIONS` failures; HALF_OPEN probes recovery with a single canary request. |
-| 6 | **Egress Proxy** | `proxy/egress.py` | Exfiltration to unapproved network destinations | Allowlist of approved hostnames and URL prefixes loaded from policy. Every outbound HTTP request from a tool is routed through the proxy; requests to non-allowlisted destinations are rejected before the TCP connection is made. |
-| 7 | **Ephemeral Sandbox** | `core/sandbox.py` | Persistent filesystem access, container escape | Each agent task runs in an isolated container with a read-only root filesystem, no network by default, and a tmpfs scratch directory that is deleted on task completion. Resource limits (CPU, memory, wall-clock time) are enforced by the container runtime. |
-| 8 | **Immutable Audit Trace** | `logging/tracer.py` | Undetected policy violations, forensic gaps | Structured JSON log entry emitted for every decision point: identity mint, policy verdict, injection score, guardrail result, tool execution, egress attempt. Entries are append-only and include a task UUID, agent ID, timestamp, and outcome. |
-| 9 | **Threat Detector (ATA)** | `defenses/threat_detector.py` | Coordinated multi-agent attacks, anomalous behavior patterns | Implements Sysdig ATA-inspired heuristics: tracks per-agent call frequency, cross-agent coordination signals, and known adversarial tool-call sequences. Produces a threat score fed into the policy engine as an additional deny condition. |
-| 10 | **Agent Quarantine** | `core/orchestrator.py` | Repeated-offender agents continuing to operate | Lifetime violation counter per agent. When total weighted violations exceed `QUARANTINE_THRESHOLD` (default: 20), the agent state transitions to `QUARANTINED` - a terminal state that blocks all future task submissions until an operator manually releases it via the API. |
+**Table 1a - Security controls: identity, module, and threat addressed.**
+
+| <sub>#</sub> | <sub>Control</sub> | <sub>Module</sub> | <sub>What It Stops</sub> |
+|---|---|---|---|
+| <sub>1</sub> | <sub>Cryptographic Agent Identity</sub> | <sub>core/identity.py</sub> | <sub>Impersonation, token replay, privilege escalation</sub> |
+| <sub>2</sub> | <sub>Deny-First Policy Engine</sub> | <sub>policy/engine.py</sub> | <sub>Unauthorized tool calls, out-of-scope resource access</sub> |
+| <sub>3</sub> | <sub>Prompt Injection Detection</sub> | <sub>defenses/injection.py</sub> | <sub>Jailbreaks, indirect injection via tool outputs</sub> |
+| <sub>4</sub> | <sub>LLM Guardrails</sub> | <sub>defenses/guardrails.py</sub> | <sub>PII leakage, harmful content in model responses</sub> |
+| <sub>5</sub> | <sub>Backpressure / Circuit Breaker</sub> | <sub>defenses/backpressure.py</sub> | <sub>Runaway agents, rate-limit exhaustion, cascading failures</sub> |
+| <sub>6</sub> | <sub>Egress Proxy</sub> | <sub>proxy/egress.py</sub> | <sub>Exfiltration to unapproved network destinations</sub> |
+| <sub>7</sub> | <sub>Ephemeral Sandbox</sub> | <sub>core/sandbox.py</sub> | <sub>Persistent filesystem access, container escape</sub> |
+| <sub>8</sub> | <sub>Immutable Audit Trace</sub> | <sub>logging/tracer.py</sub> | <sub>Undetected policy violations, forensic gaps</sub> |
+| <sub>9</sub> | <sub>Threat Detector (ATA)</sub> | <sub>defenses/threat_detector.py</sub> | <sub>Coordinated multi-agent attacks, anomalous behavior patterns</sub> |
+| <sub>10</sub> | <sub>Agent Quarantine</sub> | <sub>core/orchestrator.py</sub> | <sub>Repeated-offender agents continuing to operate</sub> |
+
+> Each row maps a named security control to the source module that implements it and the specific threat class it addresses.
+
+**Table 1b - Security controls: enforcement technique for each control.**
+
+| <sub>#</sub> | <sub>Control</sub> | <sub>Technique</sub> |
+|---|---|---|
+| <sub>1</sub> | <sub>Cryptographic Agent Identity</sub> | <sub>Short-lived RS256 JWT per task; token carries explicit allowed_tools scope and 15 min TTL. Asymmetric signing means only the identity service can mint tokens - verifiers hold only the public key.</sub> |
+| <sub>2</sub> | <sub>Deny-First Policy Engine</sub> | <sub>Ordered predicate chain: token scope check, policy existence check, deny rules, escalate rules, allow rules, default deny. No matching rule = denied. Rules are YAML-loaded at startup and immutable at runtime.</sub> |
+| <sub>3</sub> | <sub>Prompt Injection Detection</sub> | <sub>Regex pattern library covering role-override phrases, delimiter attacks, and indirect injection in tool responses. Scored 0-1 with configurable block/flag thresholds. Applied to both input prompts and tool output.</sub> |
+| <sub>4</sub> | <sub>LLM Guardrails</sub> | <sub>Pattern-based PII detector (email, phone, SSN, credit card regexes) plus keyword blocklist for harmful content. Applied post-generation before the response is returned to the caller.</sub> |
+| <sub>5</sub> | <sub>Backpressure / Circuit Breaker</sub> | <sub>Sliding-window rate limiter per agent per minute combined with a 3-state circuit breaker (CLOSED / OPEN / HALF_OPEN). Circuit opens on MAX_VIOLATIONS failures; HALF_OPEN probes recovery with a single canary request.</sub> |
+| <sub>6</sub> | <sub>Egress Proxy</sub> | <sub>Allowlist of approved hostnames and URL prefixes loaded from policy. Every outbound HTTP request from a tool is routed through the proxy; non-allowlisted destinations are rejected before the TCP connection is made.</sub> |
+| <sub>7</sub> | <sub>Ephemeral Sandbox</sub> | <sub>Each task runs in an isolated container with a read-only root filesystem, no network by default, and a tmpfs scratch directory deleted on completion. CPU, memory, and wall-clock limits are enforced by the container runtime.</sub> |
+| <sub>8</sub> | <sub>Immutable Audit Trace</sub> | <sub>Structured JSON log entry emitted for every decision point: identity mint, policy verdict, injection score, guardrail result, tool execution, egress attempt. Entries are append-only and include task UUID, agent ID, timestamp, and outcome.</sub> |
+| <sub>9</sub> | <sub>Threat Detector (ATA)</sub> | <sub>Sysdig ATA-inspired heuristics tracking per-agent call frequency, cross-agent coordination signals, and known adversarial tool-call sequences. Produces a threat score fed into the policy engine as an additional deny condition.</sub> |
+| <sub>10</sub> | <sub>Agent Quarantine</sub> | <sub>Lifetime weighted violation counter per agent. When total violations exceed QUARANTINE_THRESHOLD (default 20), agent state transitions to QUARANTINED - a terminal state blocking all future tasks until an operator manually releases it via the API.</sub> |
+
+> Table 1b describes the specific algorithm or mechanism each control uses to enforce its security guarantee.
 
 ## Full Request Lifecycle
 
-| Step | Stage | Component | Security Gate Applied |
-|------|-------|-----------|----------------------|
-| 1 | Task submitted via API | `api/main.py` | TLS termination; request schema validation |
-| 2 | Agent identity minted | `core/identity.py` | RS256 JWT issued; tool scope and TTL bound |
-| 3 | Threat pre-screen | `defenses/threat_detector.py` | ATA pattern check; anomaly score evaluated |
-| 4 | Injection scan (input) | `defenses/injection.py` | Prompt injection patterns detected and blocked |
-| 5 | Policy evaluation | `policy/engine.py` | Deny-first rule chain; ESCALATE if approval required |
-| 6 | Backpressure check | `defenses/backpressure.py` | Rate-limit window; circuit-breaker state verified |
-| 7 | Guardrail pre-check | `defenses/guardrails.py` | Argument content scanned for policy violations |
-| 8 | Tool executed in sandbox | `core/sandbox.py` | Ephemeral container; resource limits enforced |
-| 9 | Egress filtered | `proxy/egress.py` | Outbound destinations checked against allowlist |
-| 10 | Injection scan (output) | `defenses/injection.py` | Tool response scanned before returned to model |
-| 11 | Guardrail post-check | `defenses/guardrails.py` | Model response scanned for PII / harmful content |
-| 12 | Audit event emitted | `logging/tracer.py` | Immutable structured log written; violation counter updated |
-| 13 | Quarantine check | `core/orchestrator.py` | Agent quarantined if lifetime violation budget exceeded |
+**Table 2 - Full request lifecycle: each step, its component, and the security gate applied.**
+
+| <sub>#</sub> | <sub>Stage</sub> | <sub>Component</sub> | <sub>Security Gate Applied</sub> |
+|---|---|---|---|
+| <sub>1</sub> | <sub>Task submitted via API</sub> | <sub>api/main.py</sub> | <sub>TLS termination; request schema validation</sub> |
+| <sub>2</sub> | <sub>Agent identity minted</sub> | <sub>core/identity.py</sub> | <sub>RS256 JWT issued; tool scope and TTL bound</sub> |
+| <sub>3</sub> | <sub>Threat pre-screen</sub> | <sub>defenses/threat_detector.py</sub> | <sub>ATA pattern check; anomaly score evaluated</sub> |
+| <sub>4</sub> | <sub>Injection scan (input)</sub> | <sub>defenses/injection.py</sub> | <sub>Prompt injection patterns detected and blocked</sub> |
+| <sub>5</sub> | <sub>Policy evaluation</sub> | <sub>policy/engine.py</sub> | <sub>Deny-first rule chain; ESCALATE if approval required</sub> |
+| <sub>6</sub> | <sub>Backpressure check</sub> | <sub>defenses/backpressure.py</sub> | <sub>Rate-limit window; circuit-breaker state verified</sub> |
+| <sub>7</sub> | <sub>Guardrail pre-check</sub> | <sub>defenses/guardrails.py</sub> | <sub>Argument content scanned for policy violations</sub> |
+| <sub>8</sub> | <sub>Tool executed in sandbox</sub> | <sub>core/sandbox.py</sub> | <sub>Ephemeral container; resource limits enforced</sub> |
+| <sub>9</sub> | <sub>Egress filtered</sub> | <sub>proxy/egress.py</sub> | <sub>Outbound destinations checked against allowlist</sub> |
+| <sub>10</sub> | <sub>Injection scan (output)</sub> | <sub>defenses/injection.py</sub> | <sub>Tool response scanned before returned to model</sub> |
+| <sub>11</sub> | <sub>Guardrail post-check</sub> | <sub>defenses/guardrails.py</sub> | <sub>Model response scanned for PII / harmful content</sub> |
+| <sub>12</sub> | <sub>Audit event emitted</sub> | <sub>logging/tracer.py</sub> | <sub>Immutable structured log written; violation counter updated</sub> |
+| <sub>13</sub> | <sub>Quarantine check</sub> | <sub>core/orchestrator.py</sub> | <sub>Agent quarantined if lifetime violation budget exceeded</sub> |
+
+> Every request passes through all 13 stages in order. No tool call reaches execution without clearing identity, threat, injection, policy, and backpressure gates first.
 
 ---
 
